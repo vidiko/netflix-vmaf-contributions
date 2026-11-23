@@ -98,7 +98,8 @@ static char *test_json_model_rejects_non_scalar_feature_opt()
     // feature_opts_dicts values must be numbers, booleans or strings.
     // A null value must be rejected, and the parser must not leak the key it
     // duplicated before inspecting the value (checked under ASan/LSan).
-    const char *json =
+    // An array, so the buffer length is known at compile time.
+    static const char json[] =
         "{\"model_dict\": {"
         "\"feature_names\": [\"VMAF_integer_feature_vif_scale0_score\"],"
         "\"feature_opts_dicts\": [{\"vif_enhn_gain_limit\": null}]"
@@ -107,7 +108,7 @@ static char *test_json_model_rejects_non_scalar_feature_opt()
     VmafModel *model = NULL;
     VmafModelConfig cfg = { 0 };
     int err = vmaf_read_json_model_from_buffer(&model, &cfg, json,
-                                               (int) strlen(json));
+                                               (int) (sizeof(json) - 1));
     mu_assert("null feature option value must be rejected", err == -EINVAL);
 
     vmaf_model_destroy(model);
