@@ -75,9 +75,6 @@ static float _calc_scale(const struct _kernel *k)
     if (k->normalized)
         return 1.0f;
     else {
-
-        assert(0); /* zli-nflx: TODO: generalize to make _calc_scale work on 1D separable filtering */
-
         k_len = k->w * k->h;
         for (ii=0; ii<k_len; ++ii)
             sum += k->kernel[ii];
@@ -86,6 +83,37 @@ static float _calc_scale(const struct _kernel *k)
         return 1.0f;
     }
 }
+
+#ifdef IQA_CONVOLVE_1D
+/* Per-pass scales for a separable filter. When both 1D sums are non-zero,
+ * each pass normalizes by its own 1D kernel sum, so the two passes together
+ * normalize by sum(kernel_h) * sum(kernel_v), the sum of the equivalent 2D
+ * kernel. If either 1D kernel sums to zero, the equivalent 2D kernel also
+ * sums to zero and neither pass is scaled. */
+static void _calc_scale_1d(const struct _kernel *k, double *scale_h, double *scale_v)
+{
+    int ii;
+    double sum_h = 0.0;
+    double sum_v = 0.0;
+
+    if (k->normalized) {
+        *scale_h = 1.0;
+        *scale_v = 1.0;
+        return;
+    }
+    for (ii = 0; ii < k->w; ++ii)
+        sum_h += k->kernel_h[ii];
+    for (ii = 0; ii < k->h; ++ii)
+        sum_v += k->kernel_v[ii];
+    if (sum_h != 0.0 && sum_v != 0.0) {
+        *scale_h = 1.0 / sum_h;
+        *scale_v = 1.0 / sum_v;
+    } else {
+        *scale_h = 1.0;
+        *scale_v = 1.0;
+    }
+}
+#endif
 
 void _iqa_convolve(float *img, int w, int h, const struct _kernel *k, float *result, int *rw, int *rh)
 {
@@ -102,13 +130,13 @@ void _iqa_convolve(float *img, int w, int h, const struct _kernel *k, float *res
     int dst_w = w - k->w + 1;
     int dst_h = h - k->h + 1;
     int img_offset,k_offset;
-    double sum;
-    float scale, *dst;
+    double sum, scale_h, scale_v;
+    float *dst;
     float *img_cache;
 
     /* Kernel is applied to all positions where the kernel is fully contained
      * in the image */
-    scale = _calc_scale(k);
+    _calc_scale_1d(k, &scale_h, &scale_v);
 
     /* create cache */
     img_cache = (float *)calloc(w*h, sizeof(float));
@@ -130,7 +158,7 @@ void _iqa_convolve(float *img, int w, int h, const struct _kernel *k, float *res
             for (u=-uc; u<=uc-kw_even; ++u, ++k_offset) {
                 sum += img[img_offset + u] * k->kernel_h[k_offset];
             }
-            img_cache[img_offset] = (float)(sum * scale);
+            img_cache[img_offset] = (float)(sum * scale_h);
         }
     }
 
@@ -145,7 +173,7 @@ void _iqa_convolve(float *img, int w, int h, const struct _kernel *k, float *res
             for (v=-vc; v<=vc-kh_even; ++v, ++k_offset) {
                 sum += img_cache[img_offset + v*w] * k->kernel_v[k_offset];
             }
-            dst[y*dst_w + x] = (float)(sum * scale);
+            dst[y*dst_w + x] = (float)(sum * scale_v);
         }
     }
 

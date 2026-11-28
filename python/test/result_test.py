@@ -2,11 +2,12 @@ from __future__ import absolute_import
 
 import json
 import unittest
+from collections.abc import Hashable
 from functools import partial
 
 import numpy as np
 
-from vmaf.core.asset import Asset
+from vmaf.core.asset import Asset, NorefAsset
 from vmaf.config import VmafConfig
 from vmaf.core.result import Result
 from vmaf.core.result_store import FileSystemResultStore
@@ -233,25 +234,89 @@ class ResultStoreTestWithNone(MyTestCase):
         self.assertEqual(result.asset.__class__, Asset)
 
 
-class ResultHashReprTest(unittest.TestCase):
+class ResultReprTest(unittest.TestCase):
 
     def setUp(self):
         self.asset = Asset(dataset="test", content_id=0, asset_id=0,
                            ref_path="dir/refvideo.yuv", dis_path="dir/disvideo.yuv",
                            asset_dict={'width': 720, 'height': 480})
 
-    def test_hash_consistent_with_eq(self):
-        result1 = Result(self.asset, 'VMAF_V0.6.1', {'VMAF_scores': [1.0, 2.0]})
-        result2 = Result(self.asset, 'VMAF_V0.6.1', {'VMAF_scores': [1.0, 2.0]})
-        self.assertEqual(result1, result2)
-        self.assertEqual(hash(result1), hash(result2))
-        self.assertEqual(len({result1, result2}), 1)
+    def test_unhashable(self):
+        result = Result(self.asset, 'VMAF_V0.6.1', {'VMAF_scores': [1.0, 2.0]})
+        self.assertIsNone(Result.__hash__)
+        self.assertFalse(isinstance(result, Hashable))
+        with self.assertRaises(TypeError):
+            hash(result)
+        with self.assertRaises(TypeError):
+            {result}
+        with self.assertRaises(TypeError):
+            {result: 1}
 
     def test_repr(self):
         result = Result(self.asset, 'VMAF_V0.6.1', {'VMAF_scores': [1.0, 2.0]})
         self.assertEqual(
             repr(result),
             'Result(asset=test_0_0_refvideo_720x480_vs_disvideo_720x480_q_720x480, executor_id=VMAF_V0.6.1)')
+        combined = Result('combined_asset', 'VMAF_V0.6.1', {'VMAF_scores': [1.0, 2.0]})
+        self.assertEqual(
+            repr(combined),
+            'Result(asset=combined_asset, executor_id=VMAF_V0.6.1)')
+
+    def test_equal_and_mutable_results(self):
+        asset1 = self.asset.copy()
+        asset2 = self.asset.copy()
+        result1 = Result(asset1, 'VMAF_V0.6.1', {'VMAF_scores': [1.0, 2.0]})
+        result2 = Result(asset2, 'VMAF_V0.6.1', {'VMAF_scores': [1.0, 2.0]})
+        self.assertEqual(result1, result2)
+        self.assertTrue(result1 == result2)
+        self.assertFalse(result1 != result2)
+        self.assertEqual(repr(result1), repr(result2))
+        with self.assertRaises(TypeError):
+            hash(result1)
+
+        result2.result_dict['VMAF_scores'][0] = 9.0
+        self.assertNotEqual(result1, result2)
+        self.assertFalse(result1 == result2)
+        self.assertTrue(result1 != result2)
+        self.assertEqual(
+            repr(result2),
+            'Result(asset=test_0_0_refvideo_720x480_vs_disvideo_720x480_q_720x480, executor_id=VMAF_V0.6.1)')
+        with self.assertRaises(TypeError):
+            hash(result2)
+
+        asset2.asset_dict['start_frame'] = 0
+        asset2.asset_dict['end_frame'] = 1
+        self.assertNotEqual(result1, result2)
+        self.assertEqual(
+            repr(result2),
+            'Result(asset=test_0_0_refvideo_720x480_0to1_vs_disvideo_720x480_0to1_q_720x480, executor_id=VMAF_V0.6.1)')
+        with self.assertRaises(TypeError):
+            hash(result2)
+
+    def test_subclass_compatibility(self):
+        class SubResult(Result):
+            pass
+
+        sub1 = SubResult(self.asset, 'VMAF_V0.6.1', {'VMAF_scores': [1.0, 2.0]})
+        sub2 = SubResult(self.asset, 'VMAF_V0.6.1', {'VMAF_scores': [1.0, 2.0]})
+        base = Result(self.asset, 'VMAF_V0.6.1', {'VMAF_scores': [1.0, 2.0]})
+        self.assertEqual(
+            repr(sub1),
+            'SubResult(asset=test_0_0_refvideo_720x480_vs_disvideo_720x480_q_720x480, executor_id=VMAF_V0.6.1)')
+        self.assertIsNone(SubResult.__hash__)
+        with self.assertRaises(TypeError):
+            hash(sub1)
+        self.assertEqual(sub1, sub2)
+        self.assertEqual(sub1, base)
+        self.assertEqual(base, sub1)
+
+        noref_asset = NorefAsset(dataset="test", content_id=0, asset_id=0,
+                                 dis_path="dir/disvideo.yuv",
+                                 asset_dict={'width': 720, 'height': 480})
+        noref_result = Result(noref_asset, 'NIQE_V1.0', {'NIQE_scores': [3.5, 4.0]})
+        self.assertEqual(
+            repr(noref_result),
+            'Result(asset=test_0_0_disvideo_720x480_q_720x480, executor_id=NIQE_V1.0)')
 
 
 class ResultAggregatingTest(MyTestCase):

@@ -286,9 +286,7 @@ class Result(BasicResult):
     def __ne__(self, other):
         return not self.__eq__(other)
 
-    def __hash__(self):
-        # must agree with __eq__: equal results share asset and executor_id
-        return hash((self.asset, self.executor_id))
+    __hash__ = None
 
     def __repr__(self):
         return '{}(asset={}, executor_id={})'.format(
