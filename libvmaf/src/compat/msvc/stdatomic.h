@@ -32,14 +32,16 @@
 #pragma warning(push)
 #pragma warning(disable:4067)    /* newline for __has_include_next */
 
+#ifndef __has_include_next
+#define __has_include_next(x) 0
+#endif
+
 #if defined(__clang__) && __has_include_next(<stdatomic.h>)
    /* use the clang stdatomic.h with clang-cl*/
 #  include_next <stdatomic.h>
 #else /* ! stdatomic.h */
 
 #include <windows.h>
-
-#include "common/attributes.h"
 
 typedef volatile LONG  __declspec(align(32)) atomic_int;
 typedef volatile ULONG __declspec(align(32)) atomic_uint;

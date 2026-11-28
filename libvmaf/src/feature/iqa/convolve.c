@@ -85,21 +85,33 @@ static float _calc_scale(const struct _kernel *k)
 }
 
 #ifdef IQA_CONVOLVE_1D
-/* Scale for one pass of a separable filter. Each pass normalizes
- * by its own 1D kernel sum, so the two passes together normalize by
- * sum(kernel_h) * sum(kernel_v), the sum of the equivalent 2D kernel. */
-static float _calc_scale_1d(const struct _kernel *k, const float *kernel, int k_len)
+/* Per-pass scales for a separable filter. When both 1D sums are non-zero,
+ * each pass normalizes by its own 1D kernel sum, so the two passes together
+ * normalize by sum(kernel_h) * sum(kernel_v), the sum of the equivalent 2D
+ * kernel. If either 1D kernel sums to zero, the equivalent 2D kernel also
+ * sums to zero and neither pass is scaled. */
+static void _calc_scale_1d(const struct _kernel *k, double *scale_h, double *scale_v)
 {
     int ii;
-    double sum=0.0;
+    double sum_h = 0.0;
+    double sum_v = 0.0;
 
-    if (k->normalized)
-        return 1.0f;
-    for (ii=0; ii<k_len; ++ii)
-        sum += kernel[ii];
-    if (sum != 0.0)
-        return (float)(1.0 / sum);
-    return 1.0f;
+    if (k->normalized) {
+        *scale_h = 1.0;
+        *scale_v = 1.0;
+        return;
+    }
+    for (ii = 0; ii < k->w; ++ii)
+        sum_h += k->kernel_h[ii];
+    for (ii = 0; ii < k->h; ++ii)
+        sum_v += k->kernel_v[ii];
+    if (sum_h != 0.0 && sum_v != 0.0) {
+        *scale_h = 1.0 / sum_h;
+        *scale_v = 1.0 / sum_v;
+    } else {
+        *scale_h = 1.0;
+        *scale_v = 1.0;
+    }
 }
 #endif
 
@@ -118,14 +130,13 @@ void _iqa_convolve(float *img, int w, int h, const struct _kernel *k, float *res
     int dst_w = w - k->w + 1;
     int dst_h = h - k->h + 1;
     int img_offset,k_offset;
-    double sum;
-    float scale_h, scale_v, *dst;
+    double sum, scale_h, scale_v;
+    float *dst;
     float *img_cache;
 
     /* Kernel is applied to all positions where the kernel is fully contained
      * in the image */
-    scale_h = _calc_scale_1d(k, k->kernel_h, k->w);
-    scale_v = _calc_scale_1d(k, k->kernel_v, k->h);
+    _calc_scale_1d(k, &scale_h, &scale_v);
 
     /* create cache */
     img_cache = (float *)calloc(w*h, sizeof(float));
