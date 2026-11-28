@@ -286,7 +286,11 @@ class Result(BasicResult):
     def __ne__(self, other):
         return not self.__eq__(other)
 
-    # TODO: add __repr__, __hash__
+    __hash__ = None
+
+    def __repr__(self):
+        return '{}(asset={}, executor_id={})'.format(
+            self.__class__.__name__, str(self.asset), self.executor_id)
 
     def __str__(self):
         return self.to_string()
